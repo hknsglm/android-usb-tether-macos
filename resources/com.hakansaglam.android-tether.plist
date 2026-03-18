@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hakansaglam.android-tether</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/AndroidTether.app/Contents/MacOS/android-tether</string>
+        <string>--watch</string>
+    </array>
+
+    <!-- Start at boot and restart if crashed -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Log output -->
+    <key>StandardErrorPath</key>
+    <string>/tmp/android_tether.log</string>
+    <key>StandardOutPath</key>
+    <string>/tmp/android_tether.log</string>
+
+    <!-- Run as root for network configuration -->
+    <key>UserName</key>
+    <string>root</string>
+</dict>
+</plist>
