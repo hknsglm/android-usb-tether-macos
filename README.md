@@ -43,34 +43,37 @@ Android Phone (RNDIS)  <-->  USB/libusb  <-->  android-tether  <-->  utun interf
 
 ## Installation
 
-### Quick Install
+### Download (Recommended)
+
+Download the latest `.pkg` from [Releases](../../releases), double-click to install. Done.
+
+No Homebrew, no Xcode, no Terminal required.
+
+### Build from Source
 
 ```bash
-./install.sh
-```
-
-### Manual Install
-
-```bash
-# 1. Install dependencies
+# Install dependencies
 brew install libusb
 
-# 2. Build
+# Build and install (one-time sudo)
 make
-
-# Optional: Universal Binary (arm64 + x86_64)
-make UNIVERSAL=1
-
-# 3. Install (one-time sudo)
 sudo make install
-```
 
-This installs the app to `/Applications` and registers a LaunchDaemon that runs automatically at boot. **No more password prompts after this.**
+# Or build a .pkg installer yourself
+make pkg
+```
 
 ### Uninstall
 
 ```bash
 sudo make uninstall
+```
+
+Or manually:
+```bash
+sudo launchctl unload /Library/LaunchDaemons/com.hakansaglam.android-tether.plist
+sudo rm /Library/LaunchDaemons/com.hakansaglam.android-tether.plist
+rm -rf /Applications/AndroidTether.app
 ```
 
 ## Usage

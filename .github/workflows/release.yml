@@ -1,0 +1,46 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libusb
+        run: brew install libusb
+
+      - name: Build .pkg installer
+        run: make pkg
+
+      - name: Get version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AndroidTether ${{ steps.version.outputs.tag }}
+          body: |
+            ## Installation
+
+            1. Download **AndroidTether-${{ steps.version.outputs.tag }}.pkg** below
+            2. Double-click to install
+            3. Open **AndroidTether** from Applications
+
+            No Homebrew, no Xcode, no Terminal required.
+            The daemon runs automatically — just plug in your Android phone with USB tethering enabled.
+
+            ### Uninstall
+            ```bash
+            sudo launchctl unload /Library/LaunchDaemons/com.hakansaglam.android-tether.plist
+            sudo rm /Library/LaunchDaemons/com.hakansaglam.android-tether.plist
+            rm -rf /Applications/AndroidTether.app
+            ```
+          files: build/AndroidTether-*.pkg
+          draft: false
+          prerelease: false

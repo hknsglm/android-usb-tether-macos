@@ -1,0 +1,11 @@
+#!/bin/bash
+# Pre-install script for AndroidTether.pkg
+# Runs as root before files are installed
+
+# Stop existing daemon if running
+launchctl unload /Library/LaunchDaemons/com.hakansaglam.android-tether.plist 2>/dev/null || true
+
+# Remove old app if present
+rm -rf /Applications/AndroidTether.app
+
+exit 0

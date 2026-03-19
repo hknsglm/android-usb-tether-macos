@@ -2,6 +2,7 @@ build/
 build2/
 *.o
 *.dSYM/
+*.pkg
 .DS_Store
 
 # Agent/IDE context

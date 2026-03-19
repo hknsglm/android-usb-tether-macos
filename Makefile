@@ -25,10 +25,16 @@ endif
 # libusb from Homebrew
 LIBUSB_PREFIX := $(shell brew --prefix libusb 2>/dev/null || echo /opt/homebrew)
 CFLAGS += -I$(LIBUSB_PREFIX)/include/libusb-1.0 $(ARCH_FLAGS)
-LDFLAGS += -L$(LIBUSB_PREFIX)/lib -lusb-1.0 $(ARCH_FLAGS)
 
-# macOS frameworks
-LDFLAGS += -framework CoreFoundation -framework IOKit
+# Static linking (for distribution): no external dylib dependencies
+ifeq ($(STATIC), 1)
+LDFLAGS += $(LIBUSB_PREFIX)/lib/libusb-1.0.a $(ARCH_FLAGS)
+else
+LDFLAGS += -L$(LIBUSB_PREFIX)/lib -lusb-1.0 $(ARCH_FLAGS)
+endif
+
+# macOS frameworks (IOKit + objc needed for static libusb)
+LDFLAGS += -framework CoreFoundation -framework IOKit -framework Security -lobjc
 
 SRCDIR = src
 BUILDDIR = build
@@ -52,7 +58,7 @@ else
 CODESIGN_CMD = @true
 endif
 
-.PHONY: all clean install uninstall version
+.PHONY: all clean install uninstall version pkg
 
 all: $(APP)
 
@@ -110,3 +116,6 @@ uninstall:
 	rm -rf /Applications/AndroidTether.app
 	rm -f /tmp/android-tether.sock
 	@echo "Uninstalled AndroidTether.app and LaunchDaemon"
+
+pkg:
+	@scripts/build-pkg.sh

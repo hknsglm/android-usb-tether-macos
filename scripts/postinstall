@@ -1,0 +1,17 @@
+#!/bin/bash
+# Post-install script for AndroidTether.pkg
+# Runs as root after the files are installed
+
+PLIST="/Library/LaunchDaemons/com.hakansaglam.android-tether.plist"
+
+# Unload old daemon if present
+launchctl unload "$PLIST" 2>/dev/null || true
+
+# Set correct ownership and permissions
+chown root:wheel "$PLIST"
+chmod 644 "$PLIST"
+
+# Load the daemon
+launchctl load "$PLIST"
+
+exit 0
