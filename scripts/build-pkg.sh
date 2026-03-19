@@ -45,15 +45,24 @@ cp -R "$BUILD_DIR/AndroidTether.app" "$PKG_ROOT/Applications/"
 cp "$ROOT_DIR/resources/com.hakansaglam.android-tether.plist" \
    "$PKG_ROOT/Library/LaunchDaemons/"
 
-# Step 4: Build the pkg
+# Step 4: Generate component plist and disable relocation
 info "Building installer package..."
+COMPONENT_PLIST="$BUILD_DIR/component.plist"
+pkgbuild --analyze --root "$PKG_ROOT" "$COMPONENT_PLIST"
+
+# Disable bundle relocation so the app always goes to /Applications
+/usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
+
 pkgbuild \
     --root "$PKG_ROOT" \
     --scripts "$PKG_SCRIPTS" \
     --identifier "com.hakansaglam.android-tether" \
     --version "$VERSION" \
     --install-location "/" \
+    --component-plist "$COMPONENT_PLIST" \
     "$BUILD_DIR/$PKG_NAME"
+
+rm -f "$COMPONENT_PLIST"
 
 ok "Package built: build/$PKG_NAME"
 
