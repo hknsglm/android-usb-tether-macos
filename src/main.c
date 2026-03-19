@@ -32,7 +32,7 @@ static int g_no_dns = 0;
 static int g_network_bound = 0;
 static pid_t g_ui_pid = 0;
 static int g_watch_mode = 0;
-static volatile int g_watch_enabled = 1;
+static volatile int g_watch_enabled = 0;  /* start idle, UI sends "enable" if auto-connect is on */
 
 static void restore_network_state(void)
 {
@@ -751,9 +751,9 @@ int main(int argc, char **argv)
     ipc_server_t *ipc = ipc_server_create();
 
     if (g_watch_mode) {
-        /* Watch mode: run persistently, auto-connect when device appears */
+        /* Watch mode: run persistently, start idle until UI enables */
         if (ipc)
-            ipc_server_send_state(ipc, "watching", NULL, NULL);
+            ipc_server_send_state(ipc, "idle", NULL, NULL);
 
         while (g_running) {
             /* Process IPC commands */

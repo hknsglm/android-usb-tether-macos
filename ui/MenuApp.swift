@@ -185,7 +185,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var durationMenuItem: NSMenuItem!
     var autoConnectMenuItem: NSMenuItem!
     var separatorBeforeActions: NSMenuItem!
-    var autoConnectEnabled = true
+    var autoConnectEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: "autoConnect") }
+        set { UserDefaults.standard.set(newValue, forKey: "autoConnect") }
+    }
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -250,7 +253,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         autoConnectMenuItem = NSMenuItem(title: "Auto-Connect", action: #selector(toggleAutoConnect(_:)), keyEquivalent: "")
         autoConnectMenuItem.target = self
-        autoConnectMenuItem.state = .on
+        autoConnectMenuItem.state = autoConnectEnabled ? .on : .off
         menu.addItem(autoConnectMenuItem)
 
         let openAtLoginItem = NSMenuItem(title: "Open at Login", action: #selector(toggleOpenAtLogin(_:)), keyEquivalent: "")
@@ -297,7 +300,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Try to connect via IPC (daemon should always be running via LaunchDaemon)
         if ipcClient.connect() {
             ipcFailCount = 0
-            // Connected to daemon — wait for it to send state messages
+            // If auto-connect is enabled, tell daemon to start watching
+            if autoConnectEnabled {
+                ipcClient.sendCommand("enable")
+            }
             return
         }
 
@@ -367,11 +373,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             startMenuItem.isHidden = true
             stopMenuItem.isHidden = false
             connectedSince = nil
-            autoConnectEnabled = true
-            autoConnectMenuItem.state = .on
 
         case "idle":
-            stateMenuItem.title = "⏸ Auto-connect disabled"
+            stateMenuItem.title = "⏹ Ready"
             statusItem.button?.title = "⚡ Tether"
             statsMenuItem.isHidden = true
             totalDataMenuItem.isHidden = true
@@ -379,8 +383,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             startMenuItem.isHidden = false
             stopMenuItem.isHidden = true
             connectedSince = nil
-            autoConnectEnabled = false
-            autoConnectMenuItem.state = .off
 
         case "disconnected":
             stateMenuItem.title = "⏹ Disconnected"
@@ -405,7 +407,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func startTethering() {
-        // Send "enable" to daemon to resume auto-connect
+        // Send "enable" to daemon to start looking for device
         if ipcClient.isConnected {
             ipcClient.sendCommand("enable")
         } else if ipcClient.connect() {
@@ -417,23 +419,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.runModal()
             return
         }
-        autoConnectEnabled = true
-        autoConnectMenuItem.state = .on
     }
 
     @objc func stopTethering() {
         if ipcClient.isConnected {
-            ipcClient.sendStop()
+            // If auto-connect is off, fully disable so daemon goes idle
+            // If auto-connect is on, just stop current session (daemon keeps watching)
+            if autoConnectEnabled {
+                ipcClient.sendStop()
+            } else {
+                ipcClient.sendCommand("disable")
+            }
         }
     }
 
     @objc func toggleAutoConnect(_ sender: NSMenuItem) {
-        autoConnectEnabled.toggle()
-        sender.state = autoConnectEnabled ? .on : .off
+        let newValue = !autoConnectEnabled
+        autoConnectEnabled = newValue
+        sender.state = newValue ? .on : .off
+
+        let command = newValue ? "enable" : "disable"
         if ipcClient.isConnected {
-            ipcClient.sendCommand(autoConnectEnabled ? "enable" : "disable")
+            ipcClient.sendCommand(command)
         } else if ipcClient.connect() {
-            ipcClient.sendCommand(autoConnectEnabled ? "enable" : "disable")
+            ipcClient.sendCommand(command)
         }
     }
 
