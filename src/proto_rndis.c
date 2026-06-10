@@ -111,7 +111,7 @@ static int rndis_drv_unwrap_data(proto_driver_t *drv, const uint8_t *usb_data, s
         uint32_t msg_len;
         memcpy(&msg_len, pkt_ptr + 4, 4);
 
-        if (msg_len == 0 || offset + msg_len > (uint32_t)usb_len)
+        if (msg_len == 0 || msg_len > (uint32_t)usb_len - offset)
             break;
 
         const uint8_t *frame;

@@ -215,7 +215,7 @@ int dhcp_discover(usb_device_t *usb, rndis_state_t *rndis, dhcp_lease_t *lease)
             memcpy(&msg_type, pkt_ptr, 4);
             memcpy(&msg_len, pkt_ptr + 4, 4);
 
-            if (msg_len == 0 || offset + msg_len > (uint32_t)ret) break;
+            if (msg_len == 0 || msg_len > (uint32_t)ret - offset) break;
 
             const uint8_t *frame;
             size_t frame_len;
@@ -296,7 +296,7 @@ int dhcp_discover(usb_device_t *usb, rndis_state_t *rndis, dhcp_lease_t *lease)
             memcpy(&msg_type, pkt_ptr, 4);
             memcpy(&msg_len, pkt_ptr + 4, 4);
 
-            if (msg_len == 0 || offset + msg_len > (uint32_t)ret) break;
+            if (msg_len == 0 || msg_len > (uint32_t)ret - offset) break;
 
             const uint8_t *frame;
             size_t frame_len;

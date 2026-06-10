@@ -142,7 +142,7 @@ int utun_set_default_route(utun_t *tun, const char *gateway)
 #define SERVICE_ID "android-tether"
 
 /* Path to save/restore original DNS config */
-#define DNS_BACKUP_FILE "/tmp/.android-tether-dns-backup"
+#define DNS_BACKUP_FILE "/var/run/android-tether-dns-backup"
 
 int utun_register_service(utun_t *tun, const char *ip, const char *gateway,
                           const char *netmask, const char *dns1, const char *dns2)
