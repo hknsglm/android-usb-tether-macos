@@ -20,6 +20,7 @@ struct ipc_server {
     int listen_fd;
     int client_fds[MAX_CLIENTS];
     int num_clients;
+    uid_t allowed_uid; /* console user; connections from root (0) are also allowed */
 };
 
 static void set_nonblocking(int fd)
@@ -85,7 +86,14 @@ ipc_server_t *ipc_server_create(void)
 
     set_nonblocking(srv->listen_fd);
 
-    LOG_I(TAG, "IPC server listening on %s", IPC_SOCK_PATH);
+    /* Determine which non-root UID is allowed to connect.
+       /dev/console is owned by the currently logged-in console user on macOS. */
+    struct stat cs;
+    srv->allowed_uid = (uid_t)-1;
+    if (stat("/dev/console", &cs) == 0)
+        srv->allowed_uid = cs.st_uid;
+
+    LOG_I(TAG, "IPC server listening on %s (allowed uid %u)", IPC_SOCK_PATH, (unsigned)srv->allowed_uid);
     return srv;
 }
 
@@ -127,23 +135,32 @@ int ipc_server_poll(ipc_server_t *srv)
     /* Accept new connections */
     int client_fd = accept(srv->listen_fd, NULL, NULL);
     if (client_fd >= 0) {
-        set_nonblocking(client_fd);
-
-        int slot = -1;
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (srv->client_fds[i] < 0) {
-                slot = i;
-                break;
-            }
-        }
-
-        if (slot >= 0) {
-            srv->client_fds[slot] = client_fd;
-            srv->num_clients++;
-            LOG_D(TAG, "client connected (slot %d)", slot);
-        } else {
-            /* Too many clients */
+        /* Verify peer is root or the console user */
+        uid_t peer_uid;
+        gid_t peer_gid;
+        if (getpeereid(client_fd, &peer_uid, &peer_gid) != 0 ||
+            (peer_uid != 0 && peer_uid != srv->allowed_uid)) {
+            LOG_W(TAG, "rejected IPC connection from uid %u", (unsigned)peer_uid);
             close(client_fd);
+        } else {
+            set_nonblocking(client_fd);
+
+            int slot = -1;
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (srv->client_fds[i] < 0) {
+                    slot = i;
+                    break;
+                }
+            }
+
+            if (slot >= 0) {
+                srv->client_fds[slot] = client_fd;
+                srv->num_clients++;
+                LOG_D(TAG, "client connected (slot %d)", slot);
+            } else {
+                /* Too many clients */
+                close(client_fd);
+            }
         }
     }
 
