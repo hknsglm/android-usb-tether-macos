@@ -734,6 +734,11 @@ int main(int argc, char **argv)
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+    /* An IPC client going away mid-session must not take the daemon with it:
+       ipc_server_send_stats() writes to every registered client each second,
+       and a write to a closed peer raises SIGPIPE, whose default action kills
+       the process before the session teardown runs. */
+    signal(SIGPIPE, SIG_IGN);
 
     macos_version_t ver = compat_macos_version();
     LOG_I("main", "=== Android USB Tethering for macOS ===");

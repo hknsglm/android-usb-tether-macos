@@ -24,6 +24,12 @@ static int is_rndis_interface(const struct libusb_interface_descriptor *iface)
         iface->bInterfaceProtocol == USB_PROTOCOL_RNDIS)
         return 1;
 
+    /* RNDIS over Miscellaneous class (Microsoft RNDIS spec) */
+    if (iface->bInterfaceClass == USB_CLASS_MISC &&
+        iface->bInterfaceSubClass == USB_SUBCLASS_MISC_RNDIS &&
+        iface->bInterfaceProtocol == USB_PROTOCOL_MISC_RNDIS)
+        return 1;
+
     /* Vendor-specific class with RNDIS protocol */
     if (iface->bInterfaceClass == 0xFF &&
         iface->bInterfaceSubClass == 0x01 &&

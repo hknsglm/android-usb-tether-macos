@@ -18,6 +18,12 @@
 /* USB CDC Data class */
 #define USB_CLASS_CDC_DATA      0x0A
 
+/* RNDIS over the Miscellaneous class, per the Microsoft RNDIS spec.
+   Used by most current Android builds (Xiaomi, OPPO, ...). */
+#define USB_CLASS_MISC          0xEF
+#define USB_SUBCLASS_MISC_RNDIS 0x04
+#define USB_PROTOCOL_MISC_RNDIS 0x01
+
 /* USB transfer constants */
 #define USB_CTRL_TIMEOUT    5000
 #define USB_BULK_TIMEOUT    5000

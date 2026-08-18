@@ -127,6 +127,20 @@ int ipc_server_poll(ipc_server_t *srv)
     /* Accept new connections */
     int client_fd = accept(srv->listen_fd, NULL, NULL);
     if (client_fd >= 0) {
+        /* In LaunchDaemon context SUDO_UID is unset, so the socket falls back
+           to 0666 and any local process could drive the root daemon. Accept
+           only root or the active console user. */
+        uid_t peer_uid = (uid_t)-1, peer_gid;
+        struct stat cst;
+        uid_t console_uid = (stat("/dev/console", &cst) == 0) ? cst.st_uid : (uid_t)-1;
+        if (getpeereid(client_fd, &peer_uid, &peer_gid) != 0 ||
+            (peer_uid != 0 && peer_uid != console_uid)) {
+            LOG_W(TAG, "rejected IPC connection from uid %d", (int)peer_uid);
+            close(client_fd);
+            client_fd = -1;
+        }
+    }
+    if (client_fd >= 0) {
         set_nonblocking(client_fd);
 
         int slot = -1;

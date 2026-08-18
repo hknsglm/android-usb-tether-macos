@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <arpa/inet.h>
+#include <time.h>
 
 #define TAG "dhcp"
 
@@ -198,12 +199,25 @@ int dhcp_discover(usb_device_t *usb, rndis_state_t *rndis, dhcp_lease_t *lease)
     ret = usb_send_bulk(usb, rndis_buf, rndis_len);
     if (ret < 0) return -1;
 
+    /* Keep the encoded discover around: rndis_buf is reused for RX below. */
+    uint8_t disc_tx[RNDIS_BUF_SIZE];
+    memcpy(disc_tx, rndis_buf, (size_t)rndis_len);
+    int disc_len = rndis_len;
+
     /* Wait for DHCP offer */
     struct in_addr offered_addr = {0};
     struct in_addr server_addr = {0};
     struct in_addr gw = {0}, mask = {0}, d1 = {0}, d2 = {0};
 
-    for (int attempt = 0; attempt < 50; attempt++) {
+    /* Budget the wait in wall-clock time, not in receive calls, and keep
+       retransmitting: see the commit message for why 50 calls is not a bound. */
+    time_t disc_deadline = time(NULL) + 15;
+    int disc_tick = 0;
+    while (time(NULL) < disc_deadline) {
+        if (disc_tick-- <= 0) {
+            disc_tick = 10;                      /* retransmit roughly every 2s */
+            usb_send_bulk(usb, disc_tx, disc_len);
+        }
         ret = usb_recv_bulk(usb, rndis_buf, sizeof(rndis_buf), 200);
         if (ret <= 0) continue;
 
@@ -215,7 +229,7 @@ int dhcp_discover(usb_device_t *usb, rndis_state_t *rndis, dhcp_lease_t *lease)
             memcpy(&msg_type, pkt_ptr, 4);
             memcpy(&msg_len, pkt_ptr + 4, 4);
 
-            if (msg_len == 0 || offset + msg_len > (uint32_t)ret) break;
+            if (msg_len == 0 || msg_len > (uint32_t)ret - offset) break;
 
             const uint8_t *frame;
             size_t frame_len;
@@ -284,8 +298,18 @@ int dhcp_discover(usb_device_t *usb, rndis_state_t *rndis, dhcp_lease_t *lease)
     ret = usb_send_bulk(usb, rndis_buf, rndis_len);
     if (ret < 0) return -1;
 
-    /* Wait for DHCP ACK */
-    for (int attempt = 0; attempt < 50; attempt++) {
+    uint8_t req_tx[RNDIS_BUF_SIZE];
+    memcpy(req_tx, rndis_buf, (size_t)rndis_len);
+    int req_len = rndis_len;
+
+    /* Wait for DHCP ACK, same time budget and retransmit as the discover. */
+    time_t req_deadline = time(NULL) + 15;
+    int req_tick = 0;
+    while (time(NULL) < req_deadline) {
+        if (req_tick-- <= 0) {
+            req_tick = 10;
+            usb_send_bulk(usb, req_tx, req_len);
+        }
         ret = usb_recv_bulk(usb, rndis_buf, sizeof(rndis_buf), 200);
         if (ret <= 0) continue;
 
@@ -296,7 +320,7 @@ int dhcp_discover(usb_device_t *usb, rndis_state_t *rndis, dhcp_lease_t *lease)
             memcpy(&msg_type, pkt_ptr, 4);
             memcpy(&msg_len, pkt_ptr + 4, 4);
 
-            if (msg_len == 0 || offset + msg_len > (uint32_t)ret) break;
+            if (msg_len == 0 || msg_len > (uint32_t)ret - offset) break;
 
             const uint8_t *frame;
             size_t frame_len;

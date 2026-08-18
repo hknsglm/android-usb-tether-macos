@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #define STATS_JSON_PATH     "/tmp/android_tether_stats.json"
 #define STATS_JSON_TMP_PATH "/tmp/android_tether_stats.json.tmp"
@@ -9,9 +11,17 @@
 
 void stats_write_json(const tether_stats_t *stats)
 {
-    FILE *f = fopen(STATS_JSON_TMP_PATH, "w");
-    if (!f)
+    /* O_NOFOLLOW: refuse to follow a symlink planted at this predictable,
+       world-writable path, which would redirect a root write (CWE-59). */
+    int fd = open(STATS_JSON_TMP_PATH,
+                  O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0644);
+    if (fd < 0)
         return;
+    FILE *f = fdopen(fd, "w");
+    if (!f) {
+        close(fd);
+        return;
+    }
 
     fprintf(f, "{\n"
                "  \"tx_mbps\": %.2f,\n"
