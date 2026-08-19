@@ -4,6 +4,9 @@
 
 #define TAG "usb"
 
+/* Suppresses repeated "no device" errors during watch-mode rescans */
+static int g_miss_logged = 0;
+
 static int is_rndis_interface(const struct libusb_interface_descriptor *iface)
 {
     /* Standard RNDIS: Wireless Controller class */
@@ -216,11 +219,19 @@ int usb_find_rndis_device(usb_device_t *dev)
     libusb_free_device_list(list, 1);
 
     if (!found) {
-        LOG_E(TAG, "no Android RNDIS device found");
-        LOG_I(TAG, "make sure USB tethering is enabled on your Android device");
+        /* In watch mode this scan repeats every few seconds; log the miss
+           loudly once per unplug, then at debug level to keep the log clean. */
+        if (!g_miss_logged) {
+            LOG_E(TAG, "no Android RNDIS device found");
+            LOG_I(TAG, "make sure USB tethering is enabled on your Android device");
+            g_miss_logged = 1;
+        } else {
+            LOG_D(TAG, "no Android RNDIS device found (still watching)");
+        }
         libusb_exit(dev->ctx);
         return -1;
     }
+    g_miss_logged = 0;
 
     LOG_I(TAG, "opened device %04x:%04x", dev->vid, dev->pid);
     return 0;
@@ -259,6 +270,13 @@ int usb_recv_ctrl(usb_device_t *dev, uint8_t *data, size_t max_len)
         (uint16_t)max_len,
         USB_CTRL_TIMEOUT
     );
+
+    /* "No response ready yet" surfaces as a stall or timeout on some devices;
+       callers poll, so report it as an empty read rather than an error. */
+    if (ret == LIBUSB_ERROR_TIMEOUT || ret == LIBUSB_ERROR_PIPE) {
+        LOG_D(TAG, "ctrl recv not ready: %s", libusb_strerror(ret));
+        return 0;
+    }
 
     if (ret < 0) {
         LOG_E(TAG, "ctrl recv failed: %s", libusb_strerror(ret));
