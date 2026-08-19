@@ -20,6 +20,10 @@ struct ipc_server {
     int listen_fd;
     int client_fds[MAX_CLIENTS];
     int num_clients;
+    /* Last state broadcast, replayed to clients that connect mid-session —
+       state is otherwise only sent on transitions, so a UI launched after
+       "connected" would show "disconnected" forever. */
+    char last_state[256];
 };
 
 static void set_nonblocking(int fd)
@@ -141,6 +145,8 @@ int ipc_server_poll(ipc_server_t *srv)
             srv->client_fds[slot] = client_fd;
             srv->num_clients++;
             LOG_D(TAG, "client connected (slot %d)", slot);
+            if (srv->last_state[0])
+                send_to_client(client_fd, srv->last_state);
         } else {
             /* Too many clients */
             close(client_fd);
@@ -206,6 +212,7 @@ void ipc_server_send_state(ipc_server_t *srv, const char *state,
             "{\"type\":\"state\",\"state\":\"%s\"}\n", state);
     }
 
+    strlcpy(srv->last_state, json, sizeof(srv->last_state));
     send_to_all(srv, json);
 }
 
