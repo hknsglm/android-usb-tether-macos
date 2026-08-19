@@ -188,14 +188,21 @@ int dhcp_discover(usb_device_t *usb, rndis_state_t *rndis, dhcp_lease_t *lease)
 
     LOG_I(TAG, "sending DHCP discover...");
 
-    /* Build and send DHCP discover */
+    /* Build and send DHCP discover. Some devices (Huawei EMUI) NAK the first
+       bulk OUT issued right after RNDIS init while their data path spins up,
+       so retry the send a few times instead of giving up on one timeout. */
     len = dhcp_build_discover(eth_buf, sizeof(eth_buf), rndis->mac_addr, xid);
     if (len < 0) return -1;
 
     int rndis_len = rndis_build_data_packet(rndis_buf, sizeof(rndis_buf), eth_buf, len);
     if (rndis_len < 0) return -1;
 
-    ret = usb_send_bulk(usb, rndis_buf, rndis_len);
+    ret = -1;
+    for (int try = 0; try < 3 && ret < 0; try++) {
+        if (try > 0)
+            LOG_W(TAG, "discover send failed, retrying (attempt %d/3)...", try + 1);
+        ret = usb_send_bulk(usb, rndis_buf, rndis_len);
+    }
     if (ret < 0) return -1;
 
     /* Wait for DHCP offer */

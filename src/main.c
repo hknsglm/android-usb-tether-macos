@@ -129,6 +129,7 @@ struct bridge_ctx {
     atomic_int disconnected;
     atomic_uint_fast64_t rx_pkts, rx_bytes;
     atomic_uint_fast64_t tx_pkts, tx_bytes;
+    atomic_uint_fast64_t tx_fail;
 
     rx_xfer_t rx_pool[NUM_RX_XFERS];
     atomic_int active_rx;
@@ -339,6 +340,10 @@ static void LIBUSB_CALL tx_complete(struct libusb_transfer *xfer)
         atomic_store(&ctx->running, 0);
     } else if (xfer->status == LIBUSB_TRANSFER_STALL) {
         libusb_clear_halt(ctx->usb->handle, ctx->usb->ep_out);
+    } else if (xfer->status != LIBUSB_TRANSFER_COMPLETED) {
+        /* tx_pkts counts submissions; track failures so a dead OUT pipe is
+           visible in the stats instead of masquerading as traffic */
+        atomic_fetch_add(&ctx->tx_fail, 1);
     }
 
     pthread_mutex_lock(&ctx->tx_mutex);
@@ -615,10 +620,11 @@ static int run_session(int no_route, int no_dns,
                 st.tx_pkts = atomic_load(&bctx.tx_pkts);
                 st.rx_pkts = atomic_load(&bctx.rx_pkts);
 
-                LOG_I("speed", "TX: %.1f Mbps, RX: %.1f Mbps (total: %llu/%llu pkts)",
+                LOG_I("speed", "TX: %.1f Mbps, RX: %.1f Mbps (total: %llu/%llu pkts, %llu tx errs)",
                       st.tx_mbps, st.rx_mbps,
                       (unsigned long long)st.tx_pkts,
-                      (unsigned long long)st.rx_pkts);
+                      (unsigned long long)st.rx_pkts,
+                      (unsigned long long)atomic_load(&bctx.tx_fail));
 
                 stats_write_json(&st);
 
@@ -751,9 +757,14 @@ int main(int argc, char **argv)
     ipc_server_t *ipc = ipc_server_create();
 
     if (g_watch_mode) {
-        /* Watch mode: run persistently, start idle until UI enables */
+        /* Watch mode: run persistently. Starts idle until the UI enables it,
+           unless auto_connect is set in the config (headless operation). */
+        if (cfg.auto_connect) {
+            g_watch_enabled = 1;
+            LOG_I("main", "auto-connect enabled from config (headless)");
+        }
         if (ipc)
-            ipc_server_send_state(ipc, "idle", NULL, NULL);
+            ipc_server_send_state(ipc, g_watch_enabled ? "watching" : "idle", NULL, NULL);
 
         while (g_running) {
             /* Process IPC commands */

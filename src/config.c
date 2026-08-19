@@ -105,6 +105,8 @@ int config_load_file(tether_config_t *cfg, const char *path)
         } else if (strcmp(section, "protocol") == 0) {
             if (strcmp(key, "driver") == 0 && *val)
                 strlcpy(cfg->protocol, val, sizeof(cfg->protocol));
+        } else if (strcmp(section, "daemon") == 0) {
+            if (strcmp(key, "auto_connect") == 0) cfg->auto_connect = parse_bool(val);
         }
     }
 

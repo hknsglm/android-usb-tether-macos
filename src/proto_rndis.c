@@ -9,25 +9,56 @@
 
 #define TAG "rndis-drv"
 
+/* Send an encapsulated command, then poll GET_ENCAPSULATED_RESPONSE until the
+   matching completion arrives. A fixed sleep + single read is not enough:
+   some devices (Huawei EMUI/Kirin) take several hundred ms to respond after a
+   function switch, and queue unsolicited INDICATE_STATUS messages between
+   completions — both desync a naive read. Drain everything that is not our
+   completion (matched by msg_type and request_id) and keep polling. */
+static int rndis_ctrl_transaction(usb_device_t *usb, rndis_state_t *state,
+                                  const uint8_t *cmd, int cmd_len,
+                                  uint32_t expect_type,
+                                  uint8_t *resp, size_t resp_size)
+{
+    if (usb_send_ctrl(usb, cmd, cmd_len) < 0)
+        return -1;
+
+    for (int i = 0; i < 100; i++) {  /* up to ~2s */
+        usleep(20000);
+        int len = usb_recv_ctrl(usb, resp, resp_size);
+        if (len < 12)
+            continue;  /* nothing queued yet (spec: 1-byte 0x00 when empty) */
+
+        uint32_t type, req_id;
+        memcpy(&type, resp, 4);
+        if (type != expect_type)
+            continue;  /* unsolicited (INDICATE_STATUS etc.) — drain it */
+
+        memcpy(&req_id, resp + 8, 4);
+        if (req_id != state->request_id)
+            continue;  /* stale completion from an earlier command */
+
+        return len;
+    }
+
+    LOG_W(TAG, "timed out waiting for completion 0x%08x", expect_type);
+    return -1;
+}
+
 static int rndis_drv_init(proto_driver_t *drv, usb_device_t *usb)
 {
     rndis_state_t *state = (rndis_state_t *)drv->priv;
     uint8_t buf[RNDIS_BUF_SIZE];
+    uint8_t resp[RNDIS_BUF_SIZE];
     int len, ret;
 
     /* Step 1: Send RNDIS init */
     len = rndis_build_init(buf, sizeof(buf), state);
     if (len < 0) return -1;
 
-    ret = usb_send_ctrl(usb, buf, len);
-    if (ret < 0) return -1;
-
-    usleep(100000);
-
-    ret = usb_recv_ctrl(usb, buf, sizeof(buf));
-    if (ret < 0) return -1;
-
-    if (rndis_parse_init_cmplt(buf, ret, state) < 0) {
+    ret = rndis_ctrl_transaction(usb, state, buf, len, RNDIS_MSG_INIT_C,
+                                 resp, sizeof(resp));
+    if (ret < 0 || rndis_parse_init_cmplt(resp, ret, state) < 0) {
         LOG_E(TAG, "RNDIS init failed");
         return -1;
     }
@@ -36,16 +67,11 @@ static int rndis_drv_init(proto_driver_t *drv, usb_device_t *usb)
     len = rndis_build_query(buf, sizeof(buf), OID_802_3_PERMANENT_ADDRESS, state);
     if (len < 0) return -1;
 
-    ret = usb_send_ctrl(usb, buf, len);
-    if (ret < 0) return -1;
-
-    usleep(50000);
-
-    ret = usb_recv_ctrl(usb, buf, sizeof(buf));
-    if (ret < 0) return -1;
+    ret = rndis_ctrl_transaction(usb, state, buf, len, RNDIS_MSG_QUERY_C,
+                                 resp, sizeof(resp));
 
     size_t mac_len = 6;
-    if (rndis_parse_query_cmplt(buf, ret, state->mac_addr, &mac_len) < 0) {
+    if (ret < 0 || rndis_parse_query_cmplt(resp, ret, state->mac_addr, &mac_len) < 0) {
         LOG_W(TAG, "failed to query MAC address, using fallback");
         state->mac_addr[0] = 0x02;
         state->mac_addr[1] = 0x42;
@@ -69,16 +95,13 @@ static int rndis_drv_init(proto_driver_t *drv, usb_device_t *usb)
                           (uint8_t *)&filter, sizeof(filter), state);
     if (len < 0) return -1;
 
-    ret = usb_send_ctrl(usb, buf, len);
-    if (ret < 0) return -1;
-
-    usleep(50000);
-
-    ret = usb_recv_ctrl(usb, buf, sizeof(buf));
-    if (ret < 0) return -1;
-
-    if (rndis_parse_set_cmplt(buf, ret) < 0) {
-        LOG_W(TAG, "failed to set packet filter");
+    ret = rndis_ctrl_transaction(usb, state, buf, len, RNDIS_MSG_SET_C,
+                                 resp, sizeof(resp));
+    if (ret < 0 || rndis_parse_set_cmplt(resp, ret) < 0) {
+        /* Without an accepted packet filter the device drops all data traffic,
+           so this is fatal — a retry after reconnect beats a dead session. */
+        LOG_E(TAG, "failed to set packet filter");
+        return -1;
     }
 
     state->link_up = 1;
@@ -130,12 +153,12 @@ static int rndis_drv_keepalive(proto_driver_t *drv, usb_device_t *usb)
 {
     rndis_state_t *state = (rndis_state_t *)drv->priv;
     uint8_t buf[RNDIS_BUF_SIZE];
+    uint8_t resp[RNDIS_BUF_SIZE];
 
     int klen = rndis_build_keepalive(buf, sizeof(buf), state);
     if (klen > 0) {
-        usb_send_ctrl(usb, buf, klen);
-        usleep(10000);
-        usb_recv_ctrl(usb, buf, sizeof(buf));
+        rndis_ctrl_transaction(usb, state, buf, klen, RNDIS_MSG_KEEPALIVE_C,
+                               resp, sizeof(resp));
     }
     return 0;
 }

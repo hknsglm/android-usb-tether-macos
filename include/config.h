@@ -42,6 +42,9 @@ typedef struct {
     /* Protocol */
     char protocol[16];
 
+    /* Daemon */
+    int auto_connect;  /* watch mode: start connecting immediately, no UI needed */
+
     /* Internal (set by CLI only) */
     int ui_pid;
     int watch_mode;    /* --watch: persistent daemon with auto-connect */
